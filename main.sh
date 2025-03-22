@@ -4,6 +4,20 @@
 COMMAND_FILE="commands.txt"
 COMMAND_HISTORY="command_history.txt"
 PID_FILE="pids.txt"
+LOG_FILE="process_log.xml"
+
+# Function to initialize the XML log file
+initialize_log() {
+    if [ ! -f "$LOG_FILE" ]; then
+        echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" > "$LOG_FILE"
+        echo "<processes>" >> "$LOG_FILE"
+    fi
+}
+
+# Function to close the XML log file
+close_log() {
+    echo "</processes>" >> "$LOG_FILE"
+}
 
 # Function to display the menu
 show_menu() {
@@ -35,9 +49,34 @@ run_command() {
     fi
     # Run the command in the background and save its PID
     eval "$cmd &"
-    echo "Command '$cmd' is running in the background with PID $!"
-    echo "$!" >> "$PID_FILE"  # Save the PID to a file
+    pid=$!
+    echo "Command '$cmd' is running in the background with PID $pid."
+    echo "$pid" >> "$PID_FILE"  # Save the PID to a file
     echo "$cmd" >> "$COMMAND_HISTORY"  # Save command to history
+
+    # Log the command execution in XML
+    log_command_execution "$cmd" "$pid"
+}
+
+# Function to log command execution in XML
+log_command_execution() {
+    local command="$1"
+    local pid="$2"
+    local start_time=$(date +"%Y-%m-%d %H:%M:%S")
+    
+    # Wait for the command to finish and get its duration
+    wait "$pid"
+    local end_time=$(date +"%Y-%m-%d %H:%M:%S")
+    local duration=$(( SECONDS ))  # Duration in seconds
+
+    # Append the log entry to the XML file
+    echo "  <process>" >> "$LOG_FILE"
+    echo "    <command>$command</command>" >> "$LOG_FILE"
+    echo "    <pid>$pid</pid>" >> "$LOG_FILE"
+    echo "    <start_time>$start_time</start_time>" >> "$LOG_FILE"
+    echo "    <end_time>$end_time</end_time>" >> "$LOG_FILE"
+    echo "    <duration>$duration</duration>" >> "$LOG_FILE"
+    echo "  </process>" >> "$LOG_FILE"
 }
 
 # Function to list running processes
@@ -75,12 +114,14 @@ save_command() {
 load_commands() {
     if [ ! -f "$COMMAND_FILE" ]; then
         echo "Command file $COMMAND_FILE does not exist."
-        return
+               return
     fi
     while IFS= read -r cmd; do
         echo "Running command: $cmd"
         eval "$cmd &"
-        echo "$!" >> "$PID_FILE"  # Save the PID to a file
+        pid=$!
+        echo "$pid" >> "$PID_FILE"  # Save the PID to a file
+        log_command_execution "$cmd" "$pid"  # Log the command execution
     done < "$COMMAND_FILE"
     echo "All commands from $COMMAND_FILE have been executed."
 }
@@ -121,7 +162,6 @@ clear_command_history() {
     echo "Command history cleared."
 }
 
-# Function to pause a process
 # Function to pause a process
 pause_process() {
     read -p "Enter the PID of the process to pause: " pid
@@ -169,8 +209,12 @@ graceful_exit() {
             fi
         done < "$PID_FILE"
     fi
+    close_log  # Close the XML log file
     exit 0
 }
+
+# Initialize the XML log file
+initialize_log
 
 # Main loop
 while true; do
